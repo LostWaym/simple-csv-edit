@@ -113,7 +113,29 @@ function cellClass(row: number, col: number): Record<string, boolean> {
     'is-selected': isSelected(row, col),
     'is-frozen-row': row < frozenRowCount.value,
     'is-frozen-col': col < frozenColCount.value,
+    'is-frozen-row-edge': isFrozenRowEdge(row, col),
+    'is-frozen-col-edge': isFrozenColEdge(col, row),
   }
+}
+
+function isFrozenRowEdge(row: number, col: number | null): boolean {
+  if (frozenRowCount.value === 0 || row !== frozenRowCount.value - 1) {
+    return false
+  }
+  if (col === null) {
+    return frozenColCount.value === 0
+  }
+  return col >= frozenColCount.value
+}
+
+function isFrozenColEdge(col: number, row: number | null): boolean {
+  if (frozenColCount.value === 0 || col !== frozenColCount.value - 1) {
+    return false
+  }
+  if (row === null) {
+    return frozenRowCount.value === 0
+  }
+  return row >= frozenRowCount.value
 }
 
 function isFrozenRow(row: number): boolean {
@@ -528,7 +550,11 @@ onBeforeUnmount(() => {
             :key="col - 1"
             scope="col"
             class="col-head"
-            :class="{ 'is-active': isColumnActive(col - 1), 'is-frozen': isFrozenCol(col - 1) }"
+            :class="{
+              'is-active': isColumnActive(col - 1),
+              'is-frozen': isFrozenCol(col - 1),
+              'is-frozen-edge': isFrozenColEdge(col - 1, null),
+            }"
             :data-col="col - 1"
             :style="colHeadStyle(col - 1)"
             @click="onColumnHeadClick(col - 1, $event)"
@@ -543,7 +569,11 @@ onBeforeUnmount(() => {
           <th
             class="row-head"
             scope="row"
-            :class="{ 'is-active': isRowActive(rowIndex), 'is-frozen': isFrozenRow(rowIndex) }"
+            :class="{
+              'is-active': isRowActive(rowIndex),
+              'is-frozen': isFrozenRow(rowIndex),
+              'is-frozen-edge': isFrozenRowEdge(rowIndex, null),
+            }"
             :style="rowHeadStyle(rowIndex)"
             @click="onRowHeadClick(rowIndex, $event)"
             @contextmenu.prevent="emit('open-row-menu', rowIndex, $event)"
@@ -695,6 +725,16 @@ td.is-frozen-col {
 
 td.is-frozen-row.is-frozen-col {
   z-index: 3;
+}
+
+td.is-frozen-row-edge,
+th.row-head.is-frozen-edge {
+  box-shadow: inset 0 -2px 0 #868e96;
+}
+
+td.is-frozen-col-edge,
+th.col-head.is-frozen-edge {
+  box-shadow: inset -2px 0 0 #868e96;
 }
 
 td.is-focused {

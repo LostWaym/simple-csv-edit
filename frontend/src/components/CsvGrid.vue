@@ -306,6 +306,10 @@ function focusGhostInput(): void {
   }
 }
 
+function focusGrid(): void {
+  void nextTick(focusGhostInput)
+}
+
 function isDraftUnchanged(): boolean {
   const target = props.editing
   if (!target) {
@@ -497,7 +501,7 @@ function restoreScroll(state: GridScrollState | null): boolean {
   return true
 }
 
-defineExpose({ scrollToCell, getScrollState, restoreScroll })
+defineExpose({ scrollToCell, getScrollState, restoreScroll, focusGrid })
 
 onMounted(() => {
   window.addEventListener('mouseup', stopDragging)

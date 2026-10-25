@@ -31,6 +31,7 @@
 - **网格与文件状态**：分别由 `composables/useCsvDocument.ts`（表格数据与结构操作）与 `composables/useCsvFile.ts`（保存/脏标记）持有；打开与新建由工作区负责。
 - **冻结行列**：冻结数由标签级 `frozenRows`/`frozenCols` 持有（`useCsvWorkspace`），`components/CsvGrid.vue` 以 sticky 层渲染，冻结列偏移运行时测量；默认值来自设置，仅新建/打开时应用。
 - **导航与撤销**：`composables/useGridNavigation.ts` 管理焦点、矩形选区、整行/整列选择与就地编辑；`composables/useUndoRedo.ts` 提供快照式历史栈，随标签独立。聚焦单元格由透明常驻输入框承接键入与输入法预输入，选中态不显示编辑框。
+- **单元格编辑栏**：`components/CellEditBar.vue` 位于网格上方，展示并编辑聚焦单元格，提交统一走 `useCsvDocument.setCell`；目标行列在聚焦时快照。
 - **选区与剪贴板**：矩形选区由 `useGridNavigation` 的锚点 + 焦点规范化得到；复制/粘贴走 `utils/clipboard.ts`（Wails runtime 优先）与 `utils/csv.ts` 的制表符表格序列化，跨标签共享。
 - **轻提示**：`composables/useToast.ts` + `components/ToastMessage.vue` 承载短时操作反馈，文案与时长为模块常量。
 - **文件拖放**：`composables/useFileDrop.ts` 注册 Wails 文件拖放并持有拖拽遮罩状态；按路径打开由 `useCsvWorkspace.openPaths` 负责，拖放开关在 `main.go` 的 Wails 选项。

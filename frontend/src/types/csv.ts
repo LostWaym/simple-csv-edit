@@ -19,6 +19,13 @@ export interface HistoryEntry {
 
 export interface EditTarget extends CellPosition {}
 
+export type CellEditMove = 'down' | 'none'
+
+export interface CellEditCommit extends CellPosition {
+  value: string
+  move: CellEditMove
+}
+
 export interface CellMatch extends CellPosition {}
 
 export type ContextTargetKind = 'row' | 'column' | 'cell'

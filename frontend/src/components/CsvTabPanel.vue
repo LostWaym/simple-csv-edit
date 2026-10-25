@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import CellEditBar from './CellEditBar.vue'
 import ContextMenu from './ContextMenu.vue'
 import CsvGrid from './CsvGrid.vue'
 import { useToast } from '../composables/useToast'
 import type { CsvTab } from '../composables/useCsvWorkspace'
-import type { CellMatch, GridContextTarget, MenuItem } from '../types/csv'
+import type { CellEditCommit, CellMatch, GridContextTarget, MenuItem } from '../types/csv'
 import type { AppSettings } from '../types/settings'
 import { readClipboardText, writeClipboardText } from '../utils/clipboard'
 import { parseClipboardTable, serializeClipboardTable } from '../utils/csv'
@@ -24,9 +25,37 @@ const currentMatch = props.tab.currentMatch
 const toast = useToast()
 
 const gridRef = ref<InstanceType<typeof CsvGrid> | null>(null)
+const editBarRef = ref<InstanceType<typeof CellEditBar> | null>(null)
 const contextTarget = ref<GridContextTarget | null>(null)
 const insertCount = ref(1)
 const dragActive = ref(false)
+
+const barValue = computed(() => {
+  if (csvDoc.rowCount.value === 0) {
+    return ''
+  }
+  const { row, col } = navigation.focused.value
+  const target = navigation.editing.value
+  if (target && target.row === row && target.col === col) {
+    return navigation.draft.value
+  }
+  return csvDoc.rows.value[row]?.[col] ?? ''
+})
+
+function handleBarCommit(payload: CellEditCommit): void {
+  csvDoc.setCell(payload.row, payload.col, payload.value)
+  if (payload.move === 'down') {
+    navigation.focusCell(payload.row + 1, payload.col)
+    void scrollToFocus()
+  }
+  if (payload.move !== 'none') {
+    gridRef.value?.focusGrid()
+  }
+}
+
+function handleBarDismiss(): void {
+  gridRef.value?.focusGrid()
+}
 
 const matches = computed<CellMatch[]>(() =>
   findCellMatches(csvDoc.rows.value, query.value),
@@ -373,6 +402,7 @@ function handleMenuSelect(id: string): void {
 }
 
 function commitPendingEdit(): void {
+  editBarRef.value?.commitNow()
   if (navigation.editing.value) {
     navigation.commitEdit()
   }
@@ -452,6 +482,16 @@ defineExpose({
 
 <template>
   <section class="tab-panel">
+    <CellEditBar
+      ref="editBarRef"
+      :row="navigation.focused.value.row"
+      :col="navigation.focused.value.col"
+      :value="barValue"
+      :disabled="csvDoc.rowCount.value === 0"
+      @commit="handleBarCommit"
+      @dismiss="handleBarDismiss"
+    />
+
     <CsvGrid
       ref="gridRef"
       :rows="csvDoc.rows.value"

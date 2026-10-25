@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+frontend/dist/
+build/bin/
+*.exe
+*.dll
+*.sys
+*.so
+*.dylib
+
+# Wails generated bindings (regenerated on build)
+frontend/wailsjs/
+
+# SVN working copy metadata
+.svn/
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Logs and temp
+*.log
+*.tmp

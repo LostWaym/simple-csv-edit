@@ -1,0 +1,22 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #ffffff;
+  color: #212529;
+  font-family: "Segoe UI", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+#app {
+  height: 100vh;
+  overflow: hidden;
+}
+
+button,
+input {
+  font-family: inherit;
+}

@@ -120,7 +120,10 @@ export function useCsvWorkspace() {
     if (!path) {
       return {}
     }
+    return openPath(path)
+  }
 
+  async function openPath(path: string): Promise<OpenTabResult> {
     const existing = tabs.value.find((tab) => tab.file.currentFilePath.value === path)
     if (existing) {
       activateTab(existing.id)
@@ -154,6 +157,30 @@ export function useCsvWorkspace() {
     }
     activeId.value = tab.id
     return {}
+  }
+
+  async function openPaths(paths: string[]): Promise<OpenTabResult> {
+    const errors: string[] = []
+    const notices: string[] = []
+
+    for (const path of paths) {
+      const result = await openPath(path)
+      if (result.error) {
+        errors.push(result.error)
+      }
+      if (result.notice) {
+        notices.push(result.notice)
+      }
+    }
+
+    const result: OpenTabResult = {}
+    if (errors.length > 0) {
+      result.error = errors.join('；')
+    }
+    if (notices.length > 0) {
+      result.notice = notices.join('；')
+    }
+    return result
   }
 
   function confirmClose(tab: CsvTab): boolean {
@@ -207,6 +234,8 @@ export function useCsvWorkspace() {
     bootstrap,
     newTab,
     openTab,
+    openPath,
+    openPaths,
     activateTab,
     closeTab,
     commitActiveEdit,

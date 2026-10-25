@@ -1,8 +1,5 @@
 import { ClipboardGetText, ClipboardSetText } from '../../wailsjs/runtime/runtime'
-
-function hasWailsRuntime(): boolean {
-  return typeof window !== 'undefined' && 'runtime' in window
-}
+import { hasWailsRuntime } from './wails'
 
 export async function writeClipboardText(text: string): Promise<boolean> {
   if (hasWailsRuntime()) {

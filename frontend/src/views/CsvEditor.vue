@@ -7,14 +7,18 @@ import StatusBar from '../components/StatusBar.vue'
 import TabBar from '../components/TabBar.vue'
 import ToastMessage from '../components/ToastMessage.vue'
 import { useCsvWorkspace } from '../composables/useCsvWorkspace'
+import { useFileDrop } from '../composables/useFileDrop'
 import { useSettings } from '../composables/useSettings'
 import { useToast, useToastLifecycle } from '../composables/useToast'
+import { CSV_FILE_EXTENSION } from '../constants/csv'
 import { backend } from '../utils/backend'
+import { baseName, hasExtension } from '../utils/path'
 
 const workspace = useCsvWorkspace()
 const toast = useToast()
 useToastLifecycle()
 const { settings, updateSettings } = useSettings()
+const { dropActive } = useFileDrop(openDroppedPaths)
 
 const settingsOpen = ref(false)
 const panelRef = ref<InstanceType<typeof CsvTabPanel> | null>(null)
@@ -66,6 +70,37 @@ async function openFile(): Promise<void> {
   if (result.notice) {
     toast.show(result.notice)
   }
+}
+
+async function openDroppedPaths(paths: string[]): Promise<void> {
+  const csvPaths = paths.filter((path) => hasExtension(path, CSV_FILE_EXTENSION))
+  const ignored = paths.length - csvPaths.length
+
+  if (csvPaths.length === 0) {
+    toast.show(`仅支持拖入 ${CSV_FILE_EXTENSION} 文件`, 'error')
+    return
+  }
+
+  const result = await workspace.openPaths(csvPaths)
+  if (result.error) {
+    toast.show(result.error, 'error')
+    return
+  }
+  if (ignored > 0) {
+    toast.show(`已忽略 ${ignored} 个非 CSV 文件`, 'error')
+    return
+  }
+  if (result.notice) {
+    toast.show(result.notice)
+    return
+  }
+  if (csvPaths.length === 1) {
+    const tab = activeTab.value
+    const name = tab?.file.currentFilePath.value
+    toast.show(name ? `已打开 ${baseName(name)}` : '已打开文件')
+    return
+  }
+  toast.show(`已打开 ${csvPaths.length} 个文件`)
 }
 
 function createFile(): void {
@@ -253,15 +288,41 @@ onBeforeUnmount(() => {
     />
 
     <ToastMessage :message="toast.message.value" :kind="toast.kind.value" />
+
+    <div v-if="dropActive" class="drop-overlay">
+      <span class="drop-hint">松开以打开 CSV 文件</span>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .editor {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100vh;
   background: #ffffff;
   color: #212529;
+}
+
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: rgba(76, 139, 245, 0.12);
+  border: 3px dashed #4c8bf5;
+  box-sizing: border-box;
+}
+
+.drop-hint {
+  padding: 10px 20px;
+  border-radius: 6px;
+  background: #4c8bf5;
+  color: #ffffff;
+  font-size: 15px;
 }
 </style>

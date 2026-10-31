@@ -30,6 +30,15 @@ export interface CellMatch extends CellPosition {}
 
 export type FillDirection = 'down' | 'up' | 'right' | 'left'
 
+export type MoveAxis = 'row' | 'column'
+
+export interface BlockMoveRequest {
+  axis: MoveAxis
+  start: number
+  count: number
+  to: number
+}
+
 export interface FillPreview {
   row: number
   col: number

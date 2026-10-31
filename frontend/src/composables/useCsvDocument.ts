@@ -5,6 +5,7 @@ import {
   HISTORY_LIMIT,
 } from '../constants/csv'
 import type { CellPosition, CellRange, CsvSnapshot, FillDirection } from '../types/csv'
+import { resolveBlockMove, type ResolvedBlockMove } from '../utils/move'
 import { useUndoRedo } from './useUndoRedo'
 
 function createEmptyRow(columnCount: number): string[] {
@@ -210,6 +211,32 @@ export function useCsvDocument() {
     return true
   }
 
+  function moveRows(start: number, count: number, to: number): ResolvedBlockMove | null {
+    const resolved = resolveBlockMove(start, count, to, rows.value.length)
+    if (!resolved) {
+      return null
+    }
+    record('移动行')
+    const moved = rows.value.splice(resolved.start, resolved.count)
+    rows.value.splice(resolved.newStart, 0, ...moved)
+    isDirty.value = true
+    return resolved
+  }
+
+  function moveColumns(start: number, count: number, to: number): ResolvedBlockMove | null {
+    const resolved = resolveBlockMove(start, count, to, columnCount.value)
+    if (!resolved) {
+      return null
+    }
+    record('移动列')
+    rows.value.forEach((row) => {
+      const moved = row.splice(resolved.start, resolved.count)
+      row.splice(resolved.newStart, 0, ...moved)
+    })
+    isDirty.value = true
+    return resolved
+  }
+
   function markClean(): void {
     isDirty.value = false
   }
@@ -251,6 +278,8 @@ export function useCsvDocument() {
     clearRange,
     pasteMatrix,
     fillSequence,
+    moveRows,
+    moveColumns,
     markClean,
     undo,
     redo,

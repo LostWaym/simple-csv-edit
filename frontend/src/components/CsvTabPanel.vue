@@ -5,7 +5,7 @@ import ContextMenu from './ContextMenu.vue'
 import CsvGrid from './CsvGrid.vue'
 import { useToast } from '../composables/useToast'
 import type { CsvTab } from '../composables/useCsvWorkspace'
-import type { CellEditCommit, CellMatch, FillDirection, GridContextTarget, MenuItem } from '../types/csv'
+import type { BlockMoveRequest, CellEditCommit, CellMatch, FillDirection, GridContextTarget, MenuItem } from '../types/csv'
 import type { AppSettings } from '../types/settings'
 import { readClipboardText, writeClipboardText } from '../utils/clipboard'
 import { parseClipboardTable, serializeClipboardTable } from '../utils/csv'
@@ -450,6 +450,28 @@ function pasteNow(): void {
   void pasteSelection()
 }
 
+async function moveBlock(request: BlockMoveRequest): Promise<void> {
+  commitPendingEdit()
+  if (request.axis === 'row') {
+    const resolved = csvDoc.moveRows(request.start, request.count, request.to)
+    if (!resolved) {
+      return
+    }
+    navigation.selectRow(resolved.newStart, false)
+    navigation.extendSelectionTo(resolved.newStart + resolved.count - 1, 0)
+    await scrollToFocus()
+    return
+  }
+
+  const resolved = csvDoc.moveColumns(request.start, request.count, request.to)
+  if (!resolved) {
+    return
+  }
+  navigation.selectColumn(resolved.newStart, false)
+  navigation.extendSelectionTo(0, resolved.newStart + resolved.count - 1)
+  await scrollToFocus()
+}
+
 async function fillFromFocus(direction: FillDirection, count: number): Promise<void> {
   commitPendingEdit()
   const origin = navigation.focused.value
@@ -545,6 +567,7 @@ defineExpose({
       @open-column-menu="openColumnMenu"
       @open-cell-menu="openCellMenu"
       @fill-commit="fillFromFocus"
+      @move-block="moveBlock"
     />
 
     <ContextMenu

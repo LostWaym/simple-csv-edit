@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type {
+  BlockMoveRequest,
   CellMatch,
   CellRange,
   FillDirection,
   GridScrollState,
   HighlightSegment,
+  MoveAxis,
 } from '../types/csv'
 import { GRID_BOTTOM_SAFE_AREA_PX } from '../constants/csv'
 import { columnLabel } from '../utils/column'
@@ -42,6 +44,7 @@ const emit = defineEmits<{
   (event: 'open-column-menu', index: number, mouseEvent: MouseEvent): void
   (event: 'open-cell-menu', row: number, col: number, mouseEvent: MouseEvent): void
   (event: 'fill-commit', direction: FillDirection, count: number): void
+  (event: 'move-block', request: BlockMoveRequest): void
 }>()
 
 const highlightQuery = computed(() => props.query)
@@ -213,14 +216,183 @@ function onFillMouseUp(): void {
 }
 
 function onFillKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') {
+  if (event.key !== 'Escape') {
+    return
+  }
+  if (fillDragging.value) {
     event.preventDefault()
     stopFillDragging(false)
+    return
+  }
+  if (blockDrag.value) {
+    event.preventDefault()
+    finishBlockDrag(false)
   }
 }
 
-function isRowActive(row: number): boolean {
-  if (!props.hasSelection) {
+const blockDrag = ref<{ axis: MoveAxis; start: number; count: number } | null>(null)
+const blockDrop = ref<{ axis: MoveAxis; index: number } | null>(null)
+let suppressHeadClick = false
+
+const columnTotal = computed(() => props.rows[0]?.length ?? 0)
+
+function isRowMoveEdge(row: number): boolean {
+  return props.hasSelection && isRowActive(row) && row === props.selection.end.row
+}
+
+function isColumnMoveEdge(col: number): boolean {
+  return props.hasSelection && isColumnActive(col) && col === props.selection.end.col
+}
+
+function isRowDropTop(row: number): boolean {
+  const drop = blockDrop.value
+  return drop?.axis === 'row' && drop.index === row
+}
+
+function isRowDropBottom(row: number): boolean {
+  const drop = blockDrop.value
+  return drop?.axis === 'row' && drop.index === props.rows.length && row === props.rows.length - 1
+}
+
+function isColumnDropLeft(col: number): boolean {
+  const drop = blockDrop.value
+  return drop?.axis === 'column' && drop.index === col
+}
+
+function isColumnDropRight(col: number): boolean {
+  const drop = blockDrop.value
+  return (
+    drop?.axis === 'column' &&
+    drop.index === columnTotal.value &&
+    col === columnTotal.value - 1
+  )
+}
+
+function startBlockDrag(axis: MoveAxis, event: MouseEvent): void {
+  if (event.button !== 0 || !props.hasSelection) {
+    return
+  }
+  const { start, end } = props.selection
+  const from = axis === 'row' ? start.row : start.col
+  const to = axis === 'row' ? end.row : end.col
+  blockDrag.value = { axis, start: from, count: to - from + 1 }
+  blockDrop.value = null
+}
+
+function onRowHeadMouseDown(row: number, event: MouseEvent): void {
+  suppressHeadClick = false
+  if (!isRowActive(row)) {
+    return
+  }
+  startBlockDrag('row', event)
+}
+
+function onColumnHeadMouseDown(col: number, event: MouseEvent): void {
+  suppressHeadClick = false
+  if (!isColumnActive(col)) {
+    return
+  }
+  startBlockDrag('column', event)
+}
+
+function readIndex(el: HTMLElement, axis: MoveAxis): number | null {
+  const raw = axis === 'row' ? (el.dataset.row ?? el.dataset.headRow) : el.dataset.col
+  if (raw === undefined) {
+    return null
+  }
+  const index = Number.parseInt(raw, 10)
+  return Number.isFinite(index) ? index : null
+}
+
+function fallbackDropIndex(axis: MoveAxis, event: MouseEvent): number | null {
+  const container = scrollEl.value
+  if (!container) {
+    return null
+  }
+  if (axis === 'row') {
+    const heads = container.querySelectorAll<HTMLElement>('th.row-head')
+    if (heads.length === 0) {
+      return null
+    }
+    const first = heads[0].getBoundingClientRect()
+    const last = heads[heads.length - 1].getBoundingClientRect()
+    if (event.clientY < first.top) {
+      return 0
+    }
+    if (event.clientY > last.bottom) {
+      return props.rows.length
+    }
+    return null
+  }
+
+  const heads = container.querySelectorAll<HTMLElement>('th.col-head')
+  if (heads.length === 0) {
+    return null
+  }
+  const first = heads[0].getBoundingClientRect()
+  const last = heads[heads.length - 1].getBoundingClientRect()
+  if (event.clientX < first.left) {
+    return 0
+  }
+  if (event.clientX > last.right) {
+    return columnTotal.value
+  }
+  return null
+}
+
+function onBlockMouseMove(event: MouseEvent): void {
+  const drag = blockDrag.value
+  if (!drag) {
+    return
+  }
+  const el = document.elementFromPoint(event.clientX, event.clientY)
+  const target = el instanceof HTMLElement
+    ? el.closest<HTMLElement>(drag.axis === 'row' ? '[data-row], [data-head-row]' : '[data-col]')
+    : null
+  if (!target) {
+    const index = fallbackDropIndex(drag.axis, event)
+    blockDrop.value = index === null ? null : { axis: drag.axis, index }
+    return
+  }
+  const index = readIndex(target, drag.axis)
+  if (index === null) {
+    blockDrop.value = null
+    return
+  }
+  const rect = target.getBoundingClientRect()
+  const after =
+    drag.axis === 'row'
+      ? event.clientY > rect.top + rect.height / 2
+      : event.clientX > rect.left + rect.width / 2
+  const limit = drag.axis === 'row' ? props.rows.length : columnTotal.value
+  const insert = Math.min(Math.max(index + (after ? 1 : 0), 0), limit)
+  blockDrop.value = { axis: drag.axis, index: insert }
+}
+
+function finishBlockDrag(commit: boolean): void {
+  const drag = blockDrag.value
+  const drop = blockDrop.value
+  blockDrag.value = null
+  blockDrop.value = null
+  if (!commit || !drag || !drop || drop.axis !== drag.axis) {
+    return
+  }
+  suppressHeadClick = true
+  emit('move-block', {
+    axis: drag.axis,
+    start: drag.start,
+    count: drag.count,
+    to: drop.index,
+  })
+}
+
+function onBlockMouseUp(): void {
+  if (blockDrag.value) {
+    finishBlockDrag(true)
+  }
+}
+
+function isRowActive(row: number): boolean {  if (!props.hasSelection) {
     return false
   }
   const { start, end } = props.selection
@@ -248,6 +420,10 @@ function cellClass(row: number, col: number): Record<string, boolean> {
     'is-frozen-row-edge': isFrozenRowEdge(row, col),
     'is-frozen-col-edge': isFrozenColEdge(col, row),
     'is-fill-preview': isFillPreview(row, col),
+    'is-row-drop-top': isRowDropTop(row),
+    'is-row-drop-bottom': isRowDropBottom(row),
+    'is-col-drop-left': isColumnDropLeft(col),
+    'is-col-drop-right': isColumnDropRight(col),
   }
 }
 
@@ -502,11 +678,19 @@ watch(
 )
 
 function onRowHeadClick(row: number, event: MouseEvent): void {
+  if (suppressHeadClick) {
+    suppressHeadClick = false
+    return
+  }
   emit('row-head-click', row, event.shiftKey)
   void nextTick(focusGhostInput)
 }
 
 function onColumnHeadClick(col: number, event: MouseEvent): void {
+  if (suppressHeadClick) {
+    suppressHeadClick = false
+    return
+  }
   emit('column-head-click', col, event.shiftKey)
   void nextTick(focusGhostInput)
 }
@@ -649,6 +833,8 @@ defineExpose({ scrollToCell, getScrollState, restoreScroll, focusGrid })
 onMounted(() => {
   window.addEventListener('mouseup', stopDragging)
   window.addEventListener('mouseup', onFillMouseUp)
+  window.addEventListener('mouseup', onBlockMouseUp)
+  window.addEventListener('mousemove', onBlockMouseMove)
   window.addEventListener('keydown', onFillKeydown)
   void nextTick(focusGhostInput)
   scheduleMeasure()
@@ -658,6 +844,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('mouseup', stopDragging)
   window.removeEventListener('mouseup', onFillMouseUp)
+  window.removeEventListener('mouseup', onBlockMouseUp)
+  window.removeEventListener('mousemove', onBlockMouseMove)
   window.removeEventListener('keydown', onFillKeydown)
   resizeObserver?.disconnect()
   resizeObserver = null
@@ -683,13 +871,17 @@ onBeforeUnmount(() => {
               'is-active': isColumnActive(col - 1),
               'is-frozen': isFrozenCol(col - 1),
               'is-frozen-edge': isFrozenColEdge(col - 1, null),
+              'is-col-drop-left': isColumnDropLeft(col - 1),
+              'is-col-drop-right': isColumnDropRight(col - 1),
             }"
             :data-col="col - 1"
             :style="colHeadStyle(col - 1)"
+            @mousedown="onColumnHeadMouseDown(col - 1, $event)"
             @click="onColumnHeadClick(col - 1, $event)"
             @contextmenu.prevent="emit('open-column-menu', col - 1, $event)"
           >
             {{ columnLabel(col - 1) }}
+            <span v-if="isColumnMoveEdge(col - 1)" class="move-handle move-handle-column"></span>
           </th>
         </tr>
       </thead>
@@ -702,12 +894,17 @@ onBeforeUnmount(() => {
               'is-active': isRowActive(rowIndex),
               'is-frozen': isFrozenRow(rowIndex),
               'is-frozen-edge': isFrozenRowEdge(rowIndex, null),
+              'is-row-drop-top': isRowDropTop(rowIndex),
+              'is-row-drop-bottom': isRowDropBottom(rowIndex),
             }"
             :style="rowHeadStyle(rowIndex)"
+            :data-head-row="rowIndex"
+            @mousedown="onRowHeadMouseDown(rowIndex, $event)"
             @click="onRowHeadClick(rowIndex, $event)"
             @contextmenu.prevent="emit('open-row-menu', rowIndex, $event)"
           >
             {{ rowIndex + 1 }}
+            <span v-if="isRowMoveEdge(rowIndex)" class="move-handle move-handle-row"></span>
           </th>
           <td
             v-for="(cell, col) in row"
@@ -811,6 +1008,7 @@ onBeforeUnmount(() => {
 .row-head.is-active {
   background: #d0ebff;
   color: #1864ab;
+  cursor: grab;
 }
 
 .row-head {
@@ -934,5 +1132,72 @@ td.is-selected.is-match {
 
 td.is-fill-preview {
   background: #d0ebff;
+}
+
+.move-handle {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  background: #4c8bf5;
+}
+
+.move-handle-row {
+  left: 2px;
+  right: 2px;
+  bottom: 0;
+  height: 4px;
+  border-radius: 2px 2px 0 0;
+}
+
+.move-handle-column {
+  top: 2px;
+  bottom: 2px;
+  right: 0;
+  width: 4px;
+  border-radius: 0 2px 2px 0;
+}
+
+td.is-row-drop-top::before,
+th.row-head.is-row-drop-top::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: #4c8bf5;
+}
+
+td.is-row-drop-bottom::after,
+th.row-head.is-row-drop-bottom::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: #4c8bf5;
+}
+
+td.is-col-drop-left::before,
+th.col-head.is-col-drop-left::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: #4c8bf5;
+}
+
+td.is-col-drop-right::before,
+th.col-head.is-col-drop-right::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 2px;
+  background: #4c8bf5;
 }
 </style>

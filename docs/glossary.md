@@ -30,7 +30,7 @@
 - **标签页与工作区**：`composables/useCsvWorkspace.ts` 持有全部标签（每标签一套文档/文件/导航实例），`components/TabBar.vue` 为标签栏入口，`components/CsvTabPanel.vue` 为单个标签的编辑面板（菜单、选区、滚动位置）。
 - **网格与文件状态**：分别由 `composables/useCsvDocument.ts`（表格数据与结构操作）与 `composables/useCsvFile.ts`（保存/脏标记）持有；打开与新建由工作区负责。
 - **冻结行列**：冻结数由标签级 `frozenRows`/`frozenCols` 持有（`useCsvWorkspace`），`components/CsvGrid.vue` 以 sticky 层渲染，冻结列偏移运行时测量；默认值来自设置，仅新建/打开时应用。
-- **导航与撤销**：`composables/useGridNavigation.ts` 管理焦点、矩形选区、整行/整列选择与就地编辑；`composables/useUndoRedo.ts` 提供快照式历史栈，随标签独立。聚焦单元格由透明常驻输入框承接键入与输入法预输入，选中态不显示编辑框。
+- **导航与撤销**：`composables/useGridNavigation.ts` 管理焦点、矩形选区、整行/整列选择与就地编辑；整行/整列选中后可在导航栏后边缘拖动整块移动，写入走 `useCsvDocument.moveRows`/`moveColumns`（位置换算在 `utils/move.ts`）；`composables/useUndoRedo.ts` 提供快照式历史栈，随标签独立。聚焦单元格由透明常驻输入框承接键入与输入法预输入，选中态不显示编辑框。
 - **单元格编辑栏**：`components/CellEditBar.vue` 位于网格上方，展示并编辑聚焦单元格，提交统一走 `useCsvDocument.setCell`；目标行列在聚焦时快照。
 - **选区与剪贴板**：矩形选区由 `useGridNavigation` 的锚点 + 焦点规范化得到；复制/粘贴走 `utils/clipboard.ts`（Wails runtime 优先）与 `utils/csv.ts` 的制表符表格序列化，跨标签共享。
 - **数字填充**：`frontend/src/utils/fill.ts` 把单元格内容解析为递增/递减序列（保留前后缀与补零位宽）；手柄由 `components/CsvGrid.vue` 在单格聚焦时提供，写入统一走 `useCsvDocument.fillSequence`。

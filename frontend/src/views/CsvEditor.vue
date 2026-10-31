@@ -1,22 +1,31 @@
 ﻿<script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import AppToolbar from '../components/AppToolbar.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import CsvTabPanel from '../components/CsvTabPanel.vue'
 import SettingsDialog from '../components/SettingsDialog.vue'
 import StatusBar from '../components/StatusBar.vue'
 import TabBar from '../components/TabBar.vue'
 import ToastMessage from '../components/ToastMessage.vue'
 import { useCsvWorkspace } from '../composables/useCsvWorkspace'
+import { useConfirmDialog } from '../composables/useConfirmDialog'
 import { useFileDrop } from '../composables/useFileDrop'
 import { useSettings } from '../composables/useSettings'
 import { useToast, useToastLifecycle } from '../composables/useToast'
 import { CSV_FILE_EXTENSION } from '../constants/csv'
+import {
+  RELOAD_DIALOG_CHECK_KEY,
+  RELOAD_DIALOG_CHECK_LABEL,
+  RELOAD_DIALOG_MESSAGE,
+  RELOAD_DIALOG_TITLE,
+} from '../constants/reload'
 import { backend } from '../utils/backend'
 import { baseName, hasExtension } from '../utils/path'
 
 const workspace = useCsvWorkspace()
 const toast = useToast()
 useToastLifecycle()
+const confirmDialog = useConfirmDialog()
 const { settings, updateSettings } = useSettings()
 const { dropActive } = useFileDrop(openDroppedPaths)
 
@@ -31,6 +40,7 @@ const canUndo = computed(() => activeTab.value?.document.canUndo.value ?? false)
 const canRedo = computed(() => activeTab.value?.document.canRedo.value ?? false)
 const canCopy = computed(() => (activeTab.value?.document.rowCount.value ?? 0) > 0)
 const canRevealInFolder = computed(() => Boolean(activeTab.value?.file.currentFilePath.value))
+const canReload = computed(() => activeTab.value !== null)
 const isDirty = computed(() => activeTab.value?.document.isDirty.value ?? false)
 const query = computed({
   get: () => activeTab.value?.query.value ?? '',
@@ -149,6 +159,33 @@ function stepMatch(direction: 1 | -1): void {
   panelRef.value?.stepMatch(direction)
 }
 
+async function reloadTab(): Promise<void> {
+  const tab = activeTab.value
+  if (!tab) {
+    return
+  }
+  const id = tab.id
+
+  const confirmed = await confirmDialog.confirm({
+    title: RELOAD_DIALOG_TITLE,
+    message: RELOAD_DIALOG_MESSAGE,
+    checkLabel: RELOAD_DIALOG_CHECK_LABEL,
+    sessionKey: RELOAD_DIALOG_CHECK_KEY,
+  })
+  if (!confirmed) {
+    return
+  }
+
+  const result = await workspace.reloadTab(id)
+  if (result.error) {
+    toast.show(result.error, 'error')
+    return
+  }
+  if (result.status) {
+    toast.show(result.status)
+  }
+}
+
 function isEditableTarget(event: KeyboardEvent): boolean {
   const target = event.target as HTMLElement | null
   if (!target) {
@@ -166,7 +203,7 @@ function isEditableTarget(event: KeyboardEvent): boolean {
 }
 
 function handleGlobalKeydown(event: KeyboardEvent): void {
-  if (event.defaultPrevented || event.isComposing || settingsOpen.value) {
+  if (event.defaultPrevented || event.isComposing || settingsOpen.value || confirmDialog.request.value) {
     return
   }
 
@@ -237,6 +274,7 @@ onBeforeUnmount(() => {
       :can-redo="canRedo"
       :can-copy="canCopy"
       :can-reveal-in-folder="canRevealInFolder"
+      :can-reload="canReload"
       :is-dirty="isDirty"
       :query="query"
       :match-count="matchCount"
@@ -250,6 +288,7 @@ onBeforeUnmount(() => {
       @copy="copyNow()"
       @paste="pasteNow()"
       @reveal-in-folder="revealInFolder()"
+      @reload="reloadTab()"
       @update:query="query = $event"
       @next-match="stepMatch(1)"
       @prev-match="stepMatch(-1)"
@@ -285,6 +324,12 @@ onBeforeUnmount(() => {
       :settings="settings"
       @update="updateSettings"
       @close="settingsOpen = false"
+    />
+
+    <ConfirmDialog
+      v-if="confirmDialog.request.value"
+      :options="confirmDialog.request.value.options"
+      @settle="confirmDialog.settle"
     />
 
     <ToastMessage :message="toast.message.value" :kind="toast.kind.value" />

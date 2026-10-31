@@ -29,4 +29,8 @@ export const DEFAULT_ROW_COUNT = 20
 
 export const UNTITLED_TITLE_PREFIX = '未命名'
 
+export const FILTER_PLACEHOLDER = '过滤关键词，空格分隔（需全部匹配）'
+
+export const GRID_BOTTOM_SAFE_AREA_PX = 600
+
 export const HISTORY_LIMIT = 100

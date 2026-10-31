@@ -1,43 +1,90 @@
 import type { CellMatch, HighlightSegment } from '../types/csv'
 
+export function parseKeywords(query: string): string[] {
+  const keywords = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((keyword) => keyword.length > 0)
+  return Array.from(new Set(keywords))
+}
+
+interface MatchRange {
+  start: number
+  end: number
+}
+
+function cellMatchesKeywords(cell: string, keywords: string[]): boolean {
+  const haystack = cell.toLowerCase()
+  return keywords.every((keyword) => haystack.includes(keyword))
+}
+
+function findRanges(text: string, keywords: string[]): MatchRange[] {
+  const haystack = text.toLowerCase()
+  const ranges: MatchRange[] = []
+
+  keywords.forEach((keyword) => {
+    let cursor = 0
+    while (cursor < haystack.length) {
+      const hit = haystack.indexOf(keyword, cursor)
+      if (hit === -1) {
+        break
+      }
+      ranges.push({ start: hit, end: hit + keyword.length })
+      cursor = hit + keyword.length
+    }
+  })
+
+  ranges.sort((a, b) => a.start - b.start)
+  const merged: MatchRange[] = []
+  ranges.forEach((range) => {
+    const last = merged[merged.length - 1]
+    if (last && range.start <= last.end) {
+      last.end = Math.max(last.end, range.end)
+      return
+    }
+    merged.push({ ...range })
+  })
+  return merged
+}
+
 export function splitHighlight(text: string, query: string): HighlightSegment[] {
-  const trimmed = query.trim()
-  if (trimmed.length === 0) {
+  const keywords = parseKeywords(query)
+  if (keywords.length === 0 || !cellMatchesKeywords(text, keywords)) {
     return [{ text, matched: false }]
   }
 
-  const needle = trimmed.toLowerCase()
-  const haystack = text.toLowerCase()
+  const ranges = findRanges(text, keywords)
+  if (ranges.length === 0) {
+    return [{ text, matched: false }]
+  }
+
   const segments: HighlightSegment[] = []
   let cursor = 0
 
-  while (cursor < text.length) {
-    const hit = haystack.indexOf(needle, cursor)
-    if (hit === -1) {
-      segments.push({ text: text.slice(cursor), matched: false })
-      break
+  ranges.forEach((range) => {
+    if (range.start > cursor) {
+      segments.push({ text: text.slice(cursor, range.start), matched: false })
     }
+    segments.push({ text: text.slice(range.start, range.end), matched: true })
+    cursor = range.end
+  })
 
-    if (hit > cursor) {
-      segments.push({ text: text.slice(cursor, hit), matched: false })
-    }
-    segments.push({ text: text.slice(hit, hit + trimmed.length), matched: true })
-    cursor = hit + trimmed.length
+  if (cursor < text.length) {
+    segments.push({ text: text.slice(cursor), matched: false })
   }
-
-  return segments.length > 0 ? segments : [{ text, matched: false }]
+  return segments
 }
 
 export function findCellMatches(rows: string[][], query: string): CellMatch[] {
-  const needle = query.trim().toLowerCase()
-  if (needle.length === 0) {
+  const keywords = parseKeywords(query)
+  if (keywords.length === 0) {
     return []
   }
   const matches: CellMatch[] = []
 
   rows.forEach((row, rowIndex) => {
     row.forEach((cell, col) => {
-      if (cell.toLowerCase().includes(needle)) {
+      if (cellMatchesKeywords(cell, keywords)) {
         matches.push({ row: rowIndex, col })
       }
     })

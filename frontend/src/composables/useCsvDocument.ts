@@ -4,7 +4,7 @@ import {
   DEFAULT_ROW_COUNT,
   HISTORY_LIMIT,
 } from '../constants/csv'
-import type { CellPosition, CellRange, CsvSnapshot } from '../types/csv'
+import type { CellPosition, CellRange, CsvSnapshot, FillDirection } from '../types/csv'
 import { useUndoRedo } from './useUndoRedo'
 
 function createEmptyRow(columnCount: number): string[] {
@@ -180,6 +180,36 @@ export function useCsvDocument() {
     return true
   }
 
+  function fillSequence(
+    origin: CellPosition,
+    direction: FillDirection,
+    count: number,
+    values: string[],
+  ): boolean {
+    if (values.length === 0 || count <= 0) {
+      return false
+    }
+    const rowStep = direction === 'down' ? 1 : direction === 'up' ? -1 : 0
+    const colStep = direction === 'right' ? 1 : direction === 'left' ? -1 : 0
+    const lastRow = origin.row + rowStep * count
+    const lastCol = origin.col + colStep * count
+    const requiredRows = Math.max(Math.max(lastRow, origin.row) + 1, rows.value.length)
+    const requiredColumns = Math.max(Math.max(lastCol, origin.col) + 1, columnCount.value)
+
+    record('填充单元格')
+    ensureGridSize(requiredRows, requiredColumns)
+    values.forEach((value, index) => {
+      const row = origin.row + rowStep * (index + 1)
+      const col = origin.col + colStep * (index + 1)
+      const target = rows.value[row]
+      if (target && col >= 0 && col < target.length) {
+        target[col] = value
+      }
+    })
+    isDirty.value = true
+    return true
+  }
+
   function markClean(): void {
     isDirty.value = false
   }
@@ -220,6 +250,7 @@ export function useCsvDocument() {
     deleteColumn,
     clearRange,
     pasteMatrix,
+    fillSequence,
     markClean,
     undo,
     redo,

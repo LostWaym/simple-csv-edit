@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { MENU_VIEWPORT_MARGIN_PX } from '../constants/menu'
 import type { MenuItem } from '../types/csv'
 
 const props = defineProps<{
@@ -18,6 +19,21 @@ const emit = defineEmits<{
 }>()
 
 const menuEl = ref<HTMLElement | null>(null)
+const position = ref({ left: props.x, top: props.y })
+
+function clampToViewport(): void {
+  const el = menuEl.value
+  if (!el) {
+    return
+  }
+  const rect = el.getBoundingClientRect()
+  const maxLeft = window.innerWidth - rect.width - MENU_VIEWPORT_MARGIN_PX
+  const maxTop = window.innerHeight - rect.height - MENU_VIEWPORT_MARGIN_PX
+  position.value = {
+    left: Math.max(MENU_VIEWPORT_MARGIN_PX, Math.min(props.x, maxLeft)),
+    top: Math.max(MENU_VIEWPORT_MARGIN_PX, Math.min(props.y, maxTop)),
+  }
+}
 
 function onPointerDown(event: MouseEvent): void {
   if (menuEl.value && !menuEl.value.contains(event.target as Node)) {
@@ -34,6 +50,7 @@ function onKeydown(event: KeyboardEvent): void {
 onMounted(() => {
   window.addEventListener('mousedown', onPointerDown)
   window.addEventListener('keydown', onKeydown)
+  clampToViewport()
 })
 
 onBeforeUnmount(() => {
@@ -61,7 +78,11 @@ function onCountFocus(event: FocusEvent): void {
 </script>
 
 <template>
-  <div ref="menuEl" class="context-menu" :style="{ left: `${props.x}px`, top: `${props.y}px` }">
+  <div
+    ref="menuEl"
+    class="context-menu"
+    :style="{ left: `${position.left}px`, top: `${position.top}px` }"
+  >
     <div class="menu-title">{{ props.title }}</div>
     <div v-if="countEnabled" class="count-row">
       <span class="count-label">数量</span>

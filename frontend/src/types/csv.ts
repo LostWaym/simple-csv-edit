@@ -28,6 +28,13 @@ export interface CellEditCommit extends CellPosition {
 
 export interface CellMatch extends CellPosition {}
 
+export type FillDirection = 'down' | 'up' | 'right' | 'left'
+
+export interface FillPreview {
+  row: number
+  col: number
+}
+
 export type ContextTargetKind = 'row' | 'column' | 'cell'
 
 export interface GridContextTarget {

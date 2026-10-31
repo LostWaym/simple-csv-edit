@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import { FILTER_PLACEHOLDER } from '../constants/csv'
+import { RELOAD_BUTTON_LABEL, RELOAD_BUTTON_TITLE } from '../constants/reload'
+
 const props = defineProps<{
   canUndo: boolean
   canRedo: boolean
   canCopy: boolean
   canRevealInFolder: boolean
+  canReload: boolean
   isDirty: boolean
   query: string
   matchCount: number
@@ -20,6 +24,7 @@ const emit = defineEmits<{
   (event: 'copy'): void
   (event: 'paste'): void
   (event: 'reveal-in-folder'): void
+  (event: 'reload'): void
   (event: 'update:query', value: string): void
   (event: 'next-match'): void
   (event: 'prev-match'): void
@@ -60,6 +65,15 @@ function onSearchKeydown(event: KeyboardEvent): void {
       >
         打开所在文件夹
       </button>
+      <button
+        type="button"
+        class="btn"
+        :disabled="!canReload"
+        :title="RELOAD_BUTTON_TITLE"
+        @click="emit('reload')"
+      >
+        {{ RELOAD_BUTTON_LABEL }}
+      </button>
     </div>
 
     <div class="group">
@@ -82,7 +96,7 @@ function onSearchKeydown(event: KeyboardEvent): void {
       <input
         class="search-input"
         type="search"
-        placeholder="过滤关键词…"
+        :placeholder="FILTER_PLACEHOLDER"
         :value="query"
         @input="onQueryInput"
         @keydown="onSearchKeydown"

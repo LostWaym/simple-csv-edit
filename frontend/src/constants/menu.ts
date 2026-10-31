@@ -1,0 +1,1 @@
+export const MENU_VIEWPORT_MARGIN_PX = 8

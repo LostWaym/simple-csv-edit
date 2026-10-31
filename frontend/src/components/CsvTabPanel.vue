@@ -5,10 +5,11 @@ import ContextMenu from './ContextMenu.vue'
 import CsvGrid from './CsvGrid.vue'
 import { useToast } from '../composables/useToast'
 import type { CsvTab } from '../composables/useCsvWorkspace'
-import type { CellEditCommit, CellMatch, GridContextTarget, MenuItem } from '../types/csv'
+import type { CellEditCommit, CellMatch, FillDirection, GridContextTarget, MenuItem } from '../types/csv'
 import type { AppSettings } from '../types/settings'
 import { readClipboardText, writeClipboardText } from '../utils/clipboard'
 import { parseClipboardTable, serializeClipboardTable } from '../utils/csv'
+import { createFillSequence } from '../utils/fill'
 import { findCellMatches, nextMatch } from '../utils/filter'
 import { isSizeMultipleOf, tileMatrixToSize } from '../utils/matrix'
 
@@ -449,6 +450,30 @@ function pasteNow(): void {
   void pasteSelection()
 }
 
+async function fillFromFocus(direction: FillDirection, count: number): Promise<void> {
+  commitPendingEdit()
+  const origin = navigation.focused.value
+  const source = csvDoc.rows.value[origin.row]?.[origin.col] ?? ''
+  const sequence = createFillSequence(source, direction)
+  if (!sequence) {
+    return
+  }
+
+  const values = Array.from({ length: count }, (_, index) => sequence.valueAt(index))
+  if (!csvDoc.fillSequence(origin, direction, count, values)) {
+    return
+  }
+
+  await nextTick()
+  const rowStep = direction === 'down' ? 1 : direction === 'up' ? -1 : 0
+  const colStep = direction === 'right' ? 1 : direction === 'left' ? -1 : 0
+  navigation.extendSelectionTo(origin.row + rowStep * count, origin.col + colStep * count)
+  gridRef.value?.scrollToCell(
+    origin.row + rowStep * count,
+    origin.col + colStep * count,
+  )
+}
+
 function persistScroll(): void {
   const state = gridRef.value?.getScrollState()
   if (state) {
@@ -519,6 +544,7 @@ defineExpose({
       @open-row-menu="openRowMenu"
       @open-column-menu="openColumnMenu"
       @open-cell-menu="openCellMenu"
+      @fill-commit="fillFromFocus"
     />
 
     <ContextMenu

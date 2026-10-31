@@ -33,6 +33,7 @@
 - **导航与撤销**：`composables/useGridNavigation.ts` 管理焦点、矩形选区、整行/整列选择与就地编辑；`composables/useUndoRedo.ts` 提供快照式历史栈，随标签独立。聚焦单元格由透明常驻输入框承接键入与输入法预输入，选中态不显示编辑框。
 - **单元格编辑栏**：`components/CellEditBar.vue` 位于网格上方，展示并编辑聚焦单元格，提交统一走 `useCsvDocument.setCell`；目标行列在聚焦时快照。
 - **选区与剪贴板**：矩形选区由 `useGridNavigation` 的锚点 + 焦点规范化得到；复制/粘贴走 `utils/clipboard.ts`（Wails runtime 优先）与 `utils/csv.ts` 的制表符表格序列化，跨标签共享。
+- **数字填充**：`frontend/src/utils/fill.ts` 把单元格内容解析为递增/递减序列（保留前后缀与补零位宽）；手柄由 `components/CsvGrid.vue` 在单格聚焦时提供，写入统一走 `useCsvDocument.fillSequence`。
 - **轻提示**：`composables/useToast.ts` + `components/ToastMessage.vue` 承载短时操作反馈，文案与时长为模块常量。
 - **文件拖放**：`composables/useFileDrop.ts` 注册 Wails 文件拖放并持有拖拽遮罩状态；按路径打开由 `useCsvWorkspace.openPaths` 负责，拖放开关在 `main.go` 的 Wails 选项。
 - **应用设置**：`composables/useSettings.ts` 持有并持久化设置项，`components/SettingsDialog.vue` 为设置入口。
@@ -45,4 +46,4 @@
 
 - **CSV 统一出口**：`frontend/src/utils/csv.ts` 负责解析（去 BOM、混合换行归一）与序列化（按设置编码输出，默认 UTF-8 无 BOM），首行即普通数据、无表头行，其他位置不得另写解析逻辑。
 - **列标签**：`frontend/src/utils/column.ts` 生成 A/B/C… 导航标签，仅用于界面展示，不参与数据。
-- **过滤与高亮**：`frontend/src/utils/filter.ts` 负责关键词分段高亮与匹配定位；过滤不隐藏行。
+- **过滤与高亮**：`frontend/src/utils/filter.ts` 负责关键词分段高亮与匹配定位；查询以空白分隔多个关键词且需全部命中，高亮与匹配共用同一判定；过滤不隐藏行。

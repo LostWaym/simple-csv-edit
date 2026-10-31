@@ -1,5 +1,6 @@
 import { computed, ref, shallowRef, type Ref } from 'vue'
 import { UNTITLED_TITLE_PREFIX } from '../constants/csv'
+import { RELOAD_DONE_STATUS, RELOAD_ERROR_MESSAGE } from '../constants/reload'
 import type { CellMatch, GridScrollState, TabView } from '../types/csv'
 import { backend } from '../utils/backend'
 import { parseCsvText } from '../utils/csv'
@@ -25,6 +26,11 @@ export interface CsvTab {
 
 export interface OpenTabResult {
   notice?: string
+  error?: string
+}
+
+export interface ReloadTabResult {
+  status?: string
   error?: string
 }
 
@@ -183,6 +189,35 @@ export function useCsvWorkspace() {
     return result
   }
 
+  async function reloadTab(id: number): Promise<ReloadTabResult> {
+    const tab = tabs.value.find((item) => item.id === id)
+    if (!tab) {
+      return {}
+    }
+
+    commitActiveEdit()
+
+    const path = tab.file.currentFilePath.value
+    if (!path) {
+      tab.document.createBlankDocument()
+      tab.frozenRows.value = defaultFrozenCount(settings.value.defaultFrozenRows)
+      tab.frozenCols.value = defaultFrozenCount(settings.value.defaultFrozenCols)
+      tab.loadVersion.value += 1
+      return {}
+    }
+
+    let text: string
+    try {
+      text = await backend.readTextFile(path)
+    } catch (error) {
+      return { error: `${RELOAD_ERROR_MESSAGE}：${describeError(error)}` }
+    }
+
+    tab.document.loadDocument(parseCsvText(text))
+    tab.loadVersion.value += 1
+    return { status: `${RELOAD_DONE_STATUS} ${baseName(path)}` }
+  }
+
   function confirmClose(tab: CsvTab): boolean {
     if (!tab.document.isDirty.value) {
       return true
@@ -238,6 +273,7 @@ export function useCsvWorkspace() {
     openPaths,
     activateTab,
     closeTab,
+    reloadTab,
     commitActiveEdit,
   }
 }

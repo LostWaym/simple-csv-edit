@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { CellMatch, CellRange, GridScrollState, HighlightSegment } from '../types/csv'
+import type {
+  CellMatch,
+  CellRange,
+  FillDirection,
+  GridScrollState,
+  HighlightSegment,
+} from '../types/csv'
+import { GRID_BOTTOM_SAFE_AREA_PX } from '../constants/csv'
 import { columnLabel } from '../utils/column'
+import { createFillSequence } from '../utils/fill'
 import { splitHighlight } from '../utils/filter'
 
 const props = defineProps<{
@@ -33,9 +41,10 @@ const emit = defineEmits<{
   (event: 'open-row-menu', index: number, mouseEvent: MouseEvent): void
   (event: 'open-column-menu', index: number, mouseEvent: MouseEvent): void
   (event: 'open-cell-menu', row: number, col: number, mouseEvent: MouseEvent): void
+  (event: 'fill-commit', direction: FillDirection, count: number): void
 }>()
 
-const highlightQuery = computed(() => props.query.trim())
+const highlightQuery = computed(() => props.query)
 
 const frozenRowCount = computed(() =>
   Math.min(Math.max(Math.floor(props.frozenRows), 0), props.rows.length),
@@ -87,6 +96,129 @@ function isSelected(row: number, col: number): boolean {
   return row >= start.row && row <= end.row && col >= start.col && col <= end.col
 }
 
+const fillDragging = ref(false)
+const fillPreview = ref<{ direction: FillDirection; count: number } | null>(null)
+
+const fillHandleVisible = computed(
+  () => !props.hasSelection && props.editing === null && canFillFromFocused.value,
+)
+
+const canFillFromFocused = computed(() => {
+  const source = props.rows[props.focused.row]?.[props.focused.col] ?? ''
+  return createFillSequence(source, 'down') !== null
+})
+
+function isFillPreview(row: number, col: number): boolean {
+  const preview = fillPreview.value
+  if (!preview) {
+    return false
+  }
+  const { row: originRow, col: originCol } = props.focused
+  const { count } = preview
+  switch (preview.direction) {
+    case 'down':
+      return col === originCol && row > originRow && row - originRow <= count
+    case 'up':
+      return col === originCol && row < originRow && originRow - row <= count
+    case 'right':
+      return row === originRow && col > originCol && col - originCol <= count
+    case 'left':
+      return row === originRow && col < originCol && originCol - col <= count
+    default:
+      return false
+  }
+}
+
+function resolveFillDirection(
+  origin: { row: number; col: number },
+  row: number,
+  col: number,
+): FillDirection | null {
+  const rowDelta = row - origin.row
+  const colDelta = col - origin.col
+  if (Math.abs(rowDelta) >= Math.abs(colDelta)) {
+    if (rowDelta > 0) {
+      return 'down'
+    }
+    if (rowDelta < 0) {
+      return 'up'
+    }
+  }
+  if (colDelta > 0) {
+    return 'right'
+  }
+  if (colDelta < 0) {
+    return 'left'
+  }
+  return null
+}
+
+function onFillHandleMouseDown(event: MouseEvent): void {
+  if (event.button !== 0 || !canFillFromFocused.value) {
+    return
+  }
+  event.preventDefault()
+  event.stopPropagation()
+  fillDragging.value = true
+  fillPreview.value = null
+}
+
+function onCellMouseEnter(row: number, col: number): void {
+  if (fillDragging.value) {
+    updateFillPreview(row, col)
+    return
+  }
+  if (!dragging.value) {
+    return
+  }
+  const origin = dragOrigin.value
+  if (origin && origin.row === row && origin.col === col) {
+    return
+  }
+  dragMoved.value = true
+  emit('cell-drag-enter', row, col)
+}
+
+function updateFillPreview(row: number, col: number): void {
+  const origin = props.focused
+  const direction = resolveFillDirection(origin, row, col)
+  if (!direction) {
+    fillPreview.value = null
+    return
+  }
+  const count =
+    direction === 'down' || direction === 'up'
+      ? Math.abs(row - origin.row)
+      : Math.abs(col - origin.col)
+  fillPreview.value = count > 0 ? { direction, count } : null
+}
+
+function stopFillDragging(commit: boolean): void {
+  if (!fillDragging.value) {
+    return
+  }
+  const preview = fillPreview.value
+  fillDragging.value = false
+  fillPreview.value = null
+  if (commit && preview) {
+    emit('fill-commit', preview.direction, preview.count)
+  }
+  void nextTick(focusGhostInput)
+}
+
+function onFillMouseUp(): void {
+  if (fillDragging.value) {
+    stopFillDragging(true)
+  }
+}
+
+function onFillKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    stopFillDragging(false)
+  }
+}
+
 function isRowActive(row: number): boolean {
   if (!props.hasSelection) {
     return false
@@ -115,6 +247,7 @@ function cellClass(row: number, col: number): Record<string, boolean> {
     'is-frozen-col': col < frozenColCount.value,
     'is-frozen-row-edge': isFrozenRowEdge(row, col),
     'is-frozen-col-edge': isFrozenColEdge(col, row),
+    'is-fill-preview': isFillPreview(row, col),
   }
 }
 
@@ -210,18 +343,6 @@ function onCellMouseDown(row: number, col: number, event: MouseEvent): void {
   dragMoved.value = false
   dragOrigin.value = { row, col }
   emit('cell-drag-start', row, col)
-}
-
-function onCellMouseEnter(row: number, col: number): void {
-  if (!dragging.value) {
-    return
-  }
-  const origin = dragOrigin.value
-  if (origin && origin.row === row && origin.col === col) {
-    return
-  }
-  dragMoved.value = true
-  emit('cell-drag-enter', row, col)
 }
 
 function stopDragging(): void {
@@ -527,6 +648,8 @@ defineExpose({ scrollToCell, getScrollState, restoreScroll, focusGrid })
 
 onMounted(() => {
   window.addEventListener('mouseup', stopDragging)
+  window.addEventListener('mouseup', onFillMouseUp)
+  window.addEventListener('keydown', onFillKeydown)
   void nextTick(focusGhostInput)
   scheduleMeasure()
   syncResizeObserver()
@@ -534,13 +657,19 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('mouseup', stopDragging)
+  window.removeEventListener('mouseup', onFillMouseUp)
+  window.removeEventListener('keydown', onFillKeydown)
   resizeObserver?.disconnect()
   resizeObserver = null
 })
 </script>
 
 <template>
-  <div ref="scrollEl" class="grid-scroll">
+  <div
+    ref="scrollEl"
+    class="grid-scroll"
+    :style="{ paddingBottom: `${GRID_BOTTOM_SAFE_AREA_PX}px` }"
+  >
     <table class="grid">
       <thead>
         <tr>
@@ -610,7 +739,13 @@ onBeforeUnmount(() => {
                 <mark v-if="segment.matched" class="hit">{{ segment.text }}</mark>
                 <template v-else>{{ segment.text }}</template>
               </template>
-            </span>          </td>
+            </span>
+            <span
+              v-if="fillHandleVisible && isFocused(rowIndex, col)"
+              class="fill-handle"
+              @mousedown.stop.prevent="onFillHandleMouseDown"
+            ></span>
+          </td>
         </tr>
       </tbody>
     </table>
@@ -783,5 +918,21 @@ td.is-selected.is-match {
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
+}
+
+.fill-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  height: 8px;
+  background: #4c8bf5;
+  border: 1px solid #ffffff;
+  border-radius: 1px;
+  cursor: crosshair;
+}
+
+td.is-fill-preview {
+  background: #d0ebff;
 }
 </style>
